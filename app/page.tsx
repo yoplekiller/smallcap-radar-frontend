@@ -1,15 +1,24 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { type Disclosure } from "@/components/DisclosureCard";
 import CompanyCard, { type CompanyGroup } from "@/components/CompanyCard";
+import EarningsDashboard from "@/components/EarningsDashboard";
+import AlertFeed from "@/components/AlertFeed";
+import AlertsTab from "@/components/AlertsTab";
+import PushToggle from "@/components/PushToggle";
+import CalendarTab from "@/components/CalendarTab";
+import ThemeToggle from "@/components/ThemeToggle";
+import PortfolioTab from "@/components/PortfolioTab";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type SortKey = "latest" | "change_up" | "change_down" | "price_desc";
 type StockFilter = "all" | "small_cap" | "penny";
 type HaltFilter = "none" | "halt_scheduled" | "halted";
-type Mode = "feed" | "earnings" | "favorites" | "search";
+type DiscType = "all" | "cb" | "rights" | "treasury" | "major" | "governance";
+type Mode = "feed" | "earnings" | "alerts" | "favorites" | "calendar" | "search" | "portfolio";
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "latest", label: "최신순" },
@@ -20,14 +29,23 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 const FILTER_OPTIONS: { key: StockFilter; label: string; desc: string }[] = [
   { key: "all", label: "전체", desc: "" },
-  { key: "small_cap", label: "소형주", desc: "시총 3,000억↓" },
-  { key: "penny", label: "동전주", desc: "1,000원↓" },
+  { key: "small_cap", label: "소형주", desc: "시총 3,000억 이하" },
+  { key: "penny", label: "동전주", desc: "1,000원 이하" },
 ];
 
 const HALT_FILTER_OPTIONS: { key: HaltFilter; label: string }[] = [
   { key: "none", label: "전체" },
   { key: "halt_scheduled", label: "거래정지 예정" },
   { key: "halted", label: "거래정지" },
+];
+
+const DISC_TYPE_OPTIONS: { key: DiscType; label: string; keywords: string[] }[] = [
+  { key: "all",        label: "전체",     keywords: [] },
+  { key: "cb",         label: "전환사채", keywords: ["전환사채"] },
+  { key: "rights",     label: "유상증자", keywords: ["유상증자"] },
+  { key: "treasury",   label: "자기주식", keywords: ["자기주식"] },
+  { key: "major",      label: "주요사항", keywords: ["주요사항보고서"] },
+  { key: "governance", label: "지분변동", keywords: ["주식등의대량보유", "임원ㆍ주요주주특정증권", "임원·주요주주"] },
 ];
 
 const PAGE_SIZE = 10;
@@ -65,6 +83,8 @@ export default function Home() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [haltFilter, setHaltFilter] = useState<HaltFilter>("none");
   const [haltOpen, setHaltOpen] = useState(false);
+  const [discType, setDiscType] = useState<DiscType>("all");
+  const [discTypeOpen, setDiscTypeOpen] = useState(false);
   const [allItems, setAllItems] = useState<Disclosure[]>([]);
   const [page, setPage] = useState(1);
   const [feedLoading, setFeedLoading] = useState(false);
@@ -77,7 +97,7 @@ export default function Home() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
 
-  // 즐겨찾기 (localStorage 동기화)
+  // 공시 즐겨찾기 (localStorage 동기화)
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   useEffect(() => {
     try {
@@ -99,6 +119,31 @@ export default function Home() {
     });
   }
 
+  // 실적 즐겨찾기 (별도 localStorage 키)
+  const [earningsFavorites, setEarningsFavorites] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("smallcap_earnings_favorites");
+      if (stored) setEarningsFavorites(new Set(JSON.parse(stored)));
+    } catch {}
+  }, []);
+
+  function toggleEarningsFavorite(corpCode: string) {
+    if (!corpCode) return;
+    setEarningsFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(corpCode)) next.delete(corpCode);
+      else next.add(corpCode);
+      try {
+        localStorage.setItem("smallcap_earnings_favorites", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }
+
+  // 즐겨찾기 탭 서브탭
+  const [favSubTab, setFavSubTab] = useState<"disclosures" | "earnings">("disclosures");
+
   // 영업실적 탭
   const [earningsItems, setEarningsItems] = useState<Disclosure[]>([]);
   const [earningsLoading, setEarningsLoading] = useState(false);
@@ -106,7 +151,14 @@ export default function Home() {
   const [earningsPage, setEarningsPage] = useState(1);
 
   const sortedGroups = useMemo(() => {
-    let groups = attachPrices(groupByCompany(allItems));
+    const discTypeOpt = DISC_TYPE_OPTIONS.find((o) => o.key === discType)!;
+    let items = allItems;
+    if (discTypeOpt.keywords.length > 0) {
+      items = items.filter((d) =>
+        discTypeOpt.keywords.some((kw) => (d.report_nm ?? "").includes(kw))
+      );
+    }
+    let groups = attachPrices(groupByCompany(items));
     if (stockFilter === "penny") {
       groups = groups.filter((g) => g.price != null && g.price < 1000);
     }
@@ -128,19 +180,53 @@ export default function Home() {
     else if (sort === "change_down") groups.sort((a, b) => (a.change_rate ?? 999) - (b.change_rate ?? 999));
     else if (sort === "price_desc") groups.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
     return groups;
-  }, [allItems, sort, stockFilter, haltFilter]);
+  }, [allItems, sort, stockFilter, haltFilter, discType]);
 
   const groups = sortedGroups.slice(0, page * PAGE_SIZE);
   const hasMore = groups.length < sortedGroups.length;
 
   const earningsGroups = useMemo(() => attachPrices(groupByCompany(earningsItems)), [earningsItems]);
-  const pagedEarningsGroups = earningsGroups.slice(0, earningsPage * PAGE_SIZE);
-  const hasMoreEarnings = pagedEarningsGroups.length < earningsGroups.length;
 
-  // 즐겨찾기 그룹: allItems 기준 (필터 미적용)
+  const sortedEarningsGroups = useMemo(() => {
+    let groups = [...earningsGroups];
+    if (stockFilter === "penny") {
+      groups = groups.filter((g) => g.price != null && g.price < 1000);
+    }
+    if (haltFilter === "halt_scheduled") {
+      groups = groups.filter((g) =>
+        g.disclosures.some((d) => /거래정지예고|거래정지 예고|매매거래정지예고/.test(d.report_nm ?? ""))
+      );
+    } else if (haltFilter === "halted") {
+      groups = groups.filter((g) => {
+        const hasHalt = g.disclosures.some((d) => {
+          const nm = d.report_nm ?? "";
+          return nm.includes("거래정지") && !nm.includes("거래정지예고");
+        });
+        const hasResume = g.disclosures.some((d) => (d.report_nm ?? "").includes("거래재개"));
+        return hasHalt && !hasResume;
+      });
+    }
+    if (sort === "change_up") groups.sort((a, b) => (b.change_rate ?? -999) - (a.change_rate ?? -999));
+    else if (sort === "change_down") groups.sort((a, b) => (a.change_rate ?? 999) - (b.change_rate ?? 999));
+    else if (sort === "price_desc") groups.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+    return groups;
+  }, [earningsGroups, sort, stockFilter, haltFilter]);
+
+  const pagedEarningsGroups = sortedEarningsGroups.slice(0, earningsPage * PAGE_SIZE);
+  const hasMoreEarnings = pagedEarningsGroups.length < sortedEarningsGroups.length;
+
+  const feedSentinelRef = useInfiniteScroll(setPage, hasMore);
+  const earningsSentinelRef = useInfiniteScroll(setEarningsPage, hasMoreEarnings);
+
+  // 공시 즐겨찾기 그룹
   const favoriteGroups = useMemo(() => {
     return attachPrices(groupByCompany(allItems)).filter((g) => favorites.has(g.corp_code));
   }, [allItems, favorites]);
+
+  // 실적 즐겨찾기 그룹
+  const earningsFavoriteGroups = useMemo(() => {
+    return attachPrices(groupByCompany(earningsItems)).filter((g) => earningsFavorites.has(g.corp_code));
+  }, [earningsItems, earningsFavorites]);
 
   const fetchPrices = useCallback(async (disclosures: Disclosure[]) => {
     const tickers = [...new Set(disclosures.map((d) => d.stock_code).filter(Boolean))];
@@ -180,14 +266,11 @@ export default function Home() {
     setEarningsLoading(true);
     setEarningsError("");
     try {
-      const res = await fetch(`${API_URL}/disclosures/recent?days=30`);
+      const res = await fetch(`${API_URL}/disclosures/earnings?days=30`);
       const data = await res.json();
-      const fetched: Disclosure[] = (data.data ?? []).filter(
-        (d: Disclosure) => d.report_nm?.includes("실적")
-      );
+      const fetched: Disclosure[] = data.data ?? [];
       setEarningsItems(fetched);
       setEarningsPage(1);
-      // 영업실적 종목 가격 별도 조회
       const tickers = [...new Set(fetched.map((d) => d.stock_code).filter(Boolean))];
       if (tickers.length) {
         try {
@@ -218,8 +301,11 @@ export default function Home() {
     if (newMode === "earnings" && earningsItems.length === 0 && !earningsLoading) {
       fetchEarnings();
     }
-    if (newMode === "favorites" && allItems.length === 0 && !feedLoading) {
-      fetchFeed(false, 7);
+    if (newMode === "favorites") {
+      if (allItems.length === 0 && !feedLoading) fetchFeed(false, 7);
+      if (earningsItems.length === 0 && !earningsLoading && earningsFavorites.size > 0) {
+        fetchEarnings();
+      }
     }
   }
 
@@ -251,6 +337,12 @@ export default function Home() {
     setPage(1);
   }
 
+  function handleDiscTypeChange(t: DiscType) {
+    setDiscType(t);
+    setDiscTypeOpen(false);
+    setPage(1);
+  }
+
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
     if (!query.trim()) return;
@@ -272,10 +364,14 @@ export default function Home() {
   const activeFilter = FILTER_OPTIONS.find((o) => o.key === stockFilter)!;
   const activeHaltFilter = HALT_FILTER_OPTIONS.find((o) => o.key === haltFilter)!;
 
+  const totalFavCount = favorites.size + earningsFavorites.size;
   const TAB_ITEMS: { key: Mode; label: string }[] = [
-    { key: "feed", label: "피드" },
+    { key: "feed", label: "공시" },
     { key: "earnings", label: "영업실적" },
-    { key: "favorites", label: favorites.size > 0 ? `즐겨찾기 (${favorites.size})` : "즐겨찾기" },
+    { key: "alerts", label: "세력 포착" },
+    { key: "portfolio", label: "포트폴리오" },
+    { key: "favorites", label: totalFavCount > 0 ? `즐겨찾기 (${totalFavCount})` : "즐겨찾기" },
+    { key: "calendar", label: "캘린더" },
   ];
 
   return (
@@ -290,7 +386,14 @@ export default function Home() {
               ← 공시 피드로
             </button>
           ) : (
-            <h1 className="text-lg font-bold text-blue-400 mb-2">소형주 공시 레이더</h1>
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-lg font-bold text-blue-400">소형주 공시 레이더</h1>
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                <PushToggle />
+                <AlertFeed />
+              </div>
+            </div>
           )}
           <form onSubmit={handleSearch} className="flex gap-2">
             <input
@@ -317,7 +420,9 @@ export default function Home() {
                   onClick={() => handleTabChange(key)}
                   className={`px-4 py-1.5 text-sm font-medium transition-colors border-b-2 ${
                     mode === key
-                      ? "text-blue-400 border-blue-400"
+                      ? key === "alerts"
+                        ? "text-red-400 border-red-400"
+                        : "text-blue-400 border-blue-400"
                       : "text-gray-500 border-transparent hover:text-gray-300"
                   }`}
                 >
@@ -418,6 +523,36 @@ export default function Home() {
                 )}
               </div>
 
+              {/* 공시 유형 필터 */}
+              <div className="relative">
+                <button
+                  onClick={() => { setDiscTypeOpen((v) => !v); setSortOpen(false); setFilterOpen(false); setHaltOpen(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-full border transition-colors ${
+                    discType !== "all"
+                      ? "bg-purple-800 border-purple-600 text-purple-200"
+                      : "border-gray-700 text-gray-300 hover:border-gray-500"
+                  }`}
+                >
+                  {DISC_TYPE_OPTIONS.find((o) => o.key === discType)?.label}
+                  <span className="text-[10px] opacity-70">{discTypeOpen ? "▲" : "▼"}</span>
+                </button>
+                {discTypeOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg overflow-hidden z-20 min-w-[110px] shadow-lg">
+                    {DISC_TYPE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => handleDiscTypeChange(opt.key)}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                          discType === opt.key ? "bg-purple-900 text-purple-300" : "text-gray-300 hover:bg-gray-800"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {feedLoading && <span className="text-xs text-gray-500 animate-pulse ml-1">불러오는 중...</span>}
             </div>
 
@@ -442,13 +577,9 @@ export default function Home() {
                 {groups.length} / {sortedGroups.length}개 회사
               </p>
             )}
+            <div ref={feedSentinelRef} className="h-1" />
             {hasMore && (
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-800 hover:border-gray-600 rounded-lg transition-colors"
-              >
-                더 보기 ({sortedGroups.length - groups.length}개 남음)
-              </button>
+              <p className="text-xs text-gray-500 text-center py-3 animate-pulse">불러오는 중...</p>
             )}
           </>
         )}
@@ -456,8 +587,8 @@ export default function Home() {
         {/* ── 영업실적 탭 ── */}
         {mode === "earnings" && (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-gray-500">최근 30일 영업실적 공시 · AI 분석으로 ☀️/☁️ 확인</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-gray-500">최근 30일 영업실적 · AI 분석 후 증권사 예상치 비교 가능</p>
               <button
                 onClick={fetchEarnings}
                 disabled={earningsLoading}
@@ -467,73 +598,188 @@ export default function Home() {
               </button>
             </div>
 
-            {earningsError && <p className="text-red-400 text-sm mb-4">{earningsError}</p>}
-            {earningsLoading && (
-              <p className="text-xs text-gray-500 animate-pulse text-center py-8">영업실적 공시 불러오는 중...</p>
-            )}
-            {!earningsLoading && earningsGroups.length === 0 && !earningsError && (
-              <p className="text-gray-500 text-sm text-center py-12">최근 30일 영업실적 공시가 없습니다.</p>
-            )}
+            {/* 영업실적 필터 바 — 정렬 + 종목 필터만 */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="relative">
+                <button
+                  onClick={() => { setSortOpen((v) => !v); setFilterOpen(false); }}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-full border border-gray-700 text-gray-300 hover:border-gray-500 transition-colors"
+                >
+                  {SORT_OPTIONS.find((o) => o.key === sort)?.label}
+                  <span className="text-gray-500 text-[10px]">{sortOpen ? "▲" : "▼"}</span>
+                </button>
+                {sortOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg overflow-hidden z-20 min-w-[90px] shadow-lg">
+                    {SORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => handleSortChange(opt.key)}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                          sort === opt.key ? "bg-blue-900 text-blue-300" : "text-gray-300 hover:bg-gray-800"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            <div className="flex flex-col gap-3">
-              {pagedEarningsGroups.map((g) => (
-                <CompanyCard
-                  key={g.corp_code || g.corp_name}
-                  group={g}
-                  isFavorite={favorites.has(g.corp_code)}
-                  onToggleFavorite={() => toggleFavorite(g.corp_code)}
-                />
-              ))}
+              <div className="relative">
+                <button
+                  onClick={() => { setFilterOpen((v) => !v); setSortOpen(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-full border transition-colors ${
+                    stockFilter !== "all"
+                      ? "bg-emerald-700 border-emerald-600 text-white"
+                      : "border-gray-700 text-gray-300 hover:border-gray-500"
+                  }`}
+                >
+                  {activeFilter.label}
+                  <span className="text-[10px] opacity-70">{filterOpen ? "▲" : "▼"}</span>
+                </button>
+                {filterOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg overflow-hidden z-20 min-w-[120px] shadow-lg">
+                    {FILTER_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => handleFilterChange(opt.key)}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                          stockFilter === opt.key ? "bg-emerald-900 text-emerald-300" : "text-gray-300 hover:bg-gray-800"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {opt.desc && <span className="ml-1.5 text-gray-500">{opt.desc}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {earningsLoading && <span className="text-xs text-gray-500 animate-pulse ml-1">불러오는 중...</span>}
             </div>
 
-            {earningsGroups.length > 0 && (
+            <EarningsDashboard
+              groups={pagedEarningsGroups}
+              loading={earningsLoading}
+              error={earningsError}
+              favorites={earningsFavorites}
+              onToggleFavorite={toggleEarningsFavorite}
+            />
+
+            {sortedEarningsGroups.length > 0 && (
               <p className="text-xs text-gray-600 text-center mt-4">
-                {pagedEarningsGroups.length} / {earningsGroups.length}개 회사
+                {pagedEarningsGroups.length} / {sortedEarningsGroups.length}개 회사
               </p>
             )}
+            <div ref={earningsSentinelRef} className="h-1" />
             {hasMoreEarnings && (
-              <button
-                onClick={() => setEarningsPage((p) => p + 1)}
-                className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-800 hover:border-gray-600 rounded-lg transition-colors"
-              >
-                더 보기 ({earningsGroups.length - pagedEarningsGroups.length}개 남음)
-              </button>
+              <p className="text-xs text-gray-500 text-center py-3 animate-pulse">불러오는 중...</p>
             )}
           </>
         )}
 
+        {/* ── 세력 포착 탭 ── */}
+        {mode === "alerts" && <AlertsTab />}
+
+        {/* ── 포트폴리오 탭 ── */}
+        {mode === "portfolio" && <PortfolioTab />}
+
+        {/* ── 캘린더 탭 ── */}
+        {mode === "calendar" && <CalendarTab />}
+
         {/* ── 즐겨찾기 탭 ── */}
         {mode === "favorites" && (
           <>
-            {favorites.size === 0 ? (
-              <div className="text-center py-16">
-                <p className="text-gray-400 text-sm">즐겨찾기한 기업이 없습니다.</p>
-                <p className="text-gray-600 text-xs mt-2">공시 카드의 ★를 눌러 추가하세요.</p>
-              </div>
-            ) : (
+            {/* 서브탭 */}
+            <div className="flex gap-1 mb-4 bg-gray-900 p-1 rounded-lg">
+              <button
+                onClick={() => setFavSubTab("disclosures")}
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  favSubTab === "disclosures"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                공시 즐겨찾기{favorites.size > 0 && ` (${favorites.size})`}
+              </button>
+              <button
+                onClick={() => {
+                  setFavSubTab("earnings");
+                  if (earningsItems.length === 0 && !earningsLoading) fetchEarnings();
+                }}
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  favSubTab === "earnings"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                실적 즐겨찾기{earningsFavorites.size > 0 && ` (${earningsFavorites.size})`}
+              </button>
+            </div>
+
+            {/* 공시 즐겨찾기 */}
+            {favSubTab === "disclosures" && (
               <>
-                {feedLoading && (
-                  <p className="text-xs text-gray-500 animate-pulse text-center mb-4">피드 로드 중...</p>
+                {favorites.size === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-gray-400 text-sm">즐겨찾기한 기업이 없습니다.</p>
+                    <p className="text-gray-600 text-xs mt-2">피드 카드의 ★를 눌러 추가하세요.</p>
+                  </div>
+                ) : (
+                  <>
+                    {feedLoading && (
+                      <p className="text-xs text-gray-500 animate-pulse text-center mb-4">피드 로드 중...</p>
+                    )}
+                    {!feedLoading && favoriteGroups.length === 0 && (
+                      <p className="text-gray-500 text-sm text-center py-12">
+                        즐겨찾기 기업의 최근 공시가 없습니다.
+                      </p>
+                    )}
+                    <div className="flex flex-col gap-3">
+                      {favoriteGroups.map((g) => (
+                        <CompanyCard
+                          key={g.corp_code || g.corp_name}
+                          group={g}
+                          isFavorite={true}
+                          onToggleFavorite={() => toggleFavorite(g.corp_code)}
+                        />
+                      ))}
+                    </div>
+                    {favoriteGroups.length > 0 && (
+                      <p className="text-xs text-gray-600 text-center mt-4">
+                        {favoriteGroups.length}개 기업 · 피드 기준 최근 공시
+                      </p>
+                    )}
+                  </>
                 )}
-                {!feedLoading && favoriteGroups.length === 0 && (
-                  <p className="text-gray-500 text-sm text-center py-12">
-                    즐겨찾기 기업의 최근 공시가 없습니다.
-                  </p>
-                )}
-                <div className="flex flex-col gap-3">
-                  {favoriteGroups.map((g) => (
-                    <CompanyCard
-                      key={g.corp_code || g.corp_name}
-                      group={g}
-                      isFavorite={true}
-                      onToggleFavorite={() => toggleFavorite(g.corp_code)}
+              </>
+            )}
+
+            {/* 실적 즐겨찾기 */}
+            {favSubTab === "earnings" && (
+              <>
+                {earningsFavorites.size === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-gray-400 text-sm">실적 즐겨찾기한 기업이 없습니다.</p>
+                    <p className="text-gray-600 text-xs mt-2">영업실적 탭 카드의 ★를 눌러 추가하세요.</p>
+                  </div>
+                ) : (
+                  <>
+                    {earningsLoading && (
+                      <p className="text-xs text-gray-500 animate-pulse text-center mb-4">실적 로드 중...</p>
+                    )}
+                    <EarningsDashboard
+                      groups={earningsFavoriteGroups}
+                      loading={false}
+                      favorites={earningsFavorites}
+                      onToggleFavorite={toggleEarningsFavorite}
                     />
-                  ))}
-                </div>
-                {favoriteGroups.length > 0 && (
-                  <p className="text-xs text-gray-600 text-center mt-4">
-                    {favoriteGroups.length}개 기업 · 피드 기준 최근 공시
-                  </p>
+                    {earningsFavoriteGroups.length > 0 && (
+                      <p className="text-xs text-gray-600 text-center mt-4">
+                        {earningsFavoriteGroups.length}개 기업
+                      </p>
+                    )}
+                  </>
                 )}
               </>
             )}

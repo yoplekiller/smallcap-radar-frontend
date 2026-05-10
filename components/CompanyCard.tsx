@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { type Disclosure } from "./DisclosureCard";
+import MarketCapBadge from "./MarketCapBadge";
+import CompanyDetailModal from "./CompanyDetailModal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -39,6 +41,7 @@ export default function CompanyCard({
   onToggleFavorite?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("disclosures");
   const [news, setNews] = useState<NewsItem[] | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -94,6 +97,10 @@ export default function CompanyCard({
   }
 
   return (
+    <>
+    {detailOpen && (
+      <CompanyDetailModal group={group} onClose={() => setDetailOpen(false)} />
+    )}
     <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
       {/* 회사 헤더 */}
       <div
@@ -141,6 +148,12 @@ export default function CompanyCard({
               {isFavorite ? "★" : "☆"}
             </button>
           )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setDetailOpen(true); }}
+            className="text-xs text-blue-400 hover:text-blue-300 border border-blue-900 hover:border-blue-700 px-2 py-0.5 rounded-lg transition-colors"
+          >
+            상세
+          </button>
           <span className="text-gray-500 text-sm">{open ? "▲" : "▼"}</span>
         </div>
       </div>
@@ -170,15 +183,21 @@ export default function CompanyCard({
           {tab === "disclosures" && (
             <ul className="divide-y divide-gray-800 max-h-96 overflow-y-auto">
               {group.disclosures.map((item) => {
-                const ai = aiResults[item.rcept_no];
+                const ai = aiResults[item.rcept_no] ?? item.ai;  // 백엔드 캐시 우선
                 const isAnalyzing = analyzing[item.rcept_no];
+                const dartUrl = `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${item.rcept_no}`;
                 return (
                   <li key={item.rcept_no} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-200 leading-snug">
+                        <a
+                          href={dartUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-gray-200 hover:text-blue-300 leading-snug block transition-colors"
+                        >
                           {item.report_nm?.trim()}
-                        </p>
+                        </a>
                         <p className="text-xs text-gray-600 mt-1">
                           {formatDate(item.rcept_dt)}
                         </p>
@@ -191,15 +210,18 @@ export default function CompanyCard({
                         )}
                         {ai && ai.score >= 0 && (
                           <span
-                            className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                              ai.score >= 8
-                                ? "bg-red-500 text-white"
-                                : ai.score >= 5
-                                ? "bg-yellow-500 text-white"
-                                : "bg-gray-600 text-white"
-                            }`}
+                            style={{
+                              backgroundColor:
+                                ai.sentiment === "positive"
+                                  ? ai.score >= 8 ? "#059669" : ai.score >= 5 ? "#047857" : "#064e3b"
+                                  : ai.sentiment === "negative"
+                                  ? ai.score >= 8 ? "#dc2626" : ai.score >= 5 ? "#b91c1c" : "#7f1d1d"
+                                  : ai.score >= 5 ? "#b45309" : "#4b5563",
+                            }}
+                            className="text-white text-xs font-bold px-1.5 py-0.5 rounded"
+                            title="주가 영향도 (0~10)"
                           >
-                            {ai.score}점
+                            {ai.sentiment === "positive" ? "긍정" : ai.sentiment === "negative" ? "부정" : "중립"} · 주가 영향도 {ai.score}
                           </span>
                         )}
                         {!ai && !isAnalyzing && (
@@ -263,10 +285,54 @@ export default function CompanyCard({
                         {ai.summary && (
                           <p className="text-xs text-gray-300 leading-relaxed">{ai.summary}</p>
                         )}
+                        {/* 시가총액 대비 공시 금액 배지 */}
+                        {ai.market_cap_comment && ai.market_cap_ratio_pct != null && ai.market_cap_risk && (
+                          <MarketCapBadge
+                            ratioPct={ai.market_cap_ratio_pct}
+                            scale={
+                              ai.market_cap_risk === "critical" ? "초대형" :
+                              ai.market_cap_risk === "high" ? "대형" :
+                              ai.market_cap_risk === "medium" ? "중형" : "소형"
+                            }
+                            riskLevel={ai.market_cap_risk as "critical" | "high" | "medium" | "low"}
+                            comment={ai.market_cap_comment}
+                          />
+                        )}
+                        {/* 어닝쇼크 판정 배지 */}
+                        {ai.shock_verdict && ai.shock_verdict_en && (
+                          <div className="space-y-0.5">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold ${
+                                ai.shock_verdict_en === "shock"
+                                  ? "bg-red-900 border-red-700 text-red-300"
+                                  : ai.shock_verdict_en === "beat"
+                                  ? "bg-green-900 border-green-700 text-green-300"
+                                  : ai.shock_verdict_en === "beat_minor"
+                                  ? "bg-emerald-900 border-emerald-700 text-emerald-300"
+                                  : ai.shock_verdict_en === "miss"
+                                  ? "bg-orange-900 border-orange-700 text-orange-300"
+                                  : "bg-gray-800 border-gray-700 text-gray-400"
+                              }`}
+                            >
+                              {ai.shock_verdict}
+                              {ai.shock_diff_pct != null && (
+                                <span className="opacity-70 font-normal">
+                                  {ai.shock_diff_pct >= 0 ? "+" : ""}{ai.shock_diff_pct.toFixed(1)}%
+                                </span>
+                              )}
+                            </span>
+                            {ai.shock_comment && (
+                              <p className="text-[11px] text-gray-400 leading-relaxed">{ai.shock_comment}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                     {ai && ai.error && (
-                      <p className="text-xs text-red-400 mt-1">{ai.error}</p>
+                      <p className={`text-xs mt-1 ${ai.error.includes("한도 초과") ? "text-yellow-400" : "text-red-400"}`}>
+                        {ai.error.includes("한도 초과") ? "⏳ " : ""}
+                        {ai.error}
+                      </p>
                     )}
                   </li>
                 );
@@ -310,5 +376,6 @@ export default function CompanyCard({
         </div>
       )}
     </div>
+    </>
   );
 }

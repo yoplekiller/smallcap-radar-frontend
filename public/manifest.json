@@ -1,0 +1,31 @@
+{
+  "name": "소형주 공시 레이더",
+  "short_name": "공시레이더",
+  "description": "소형주 공시 실시간 알림 — 세력 포착, 영업실적, AI 분석",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#030712",
+  "theme_color": "#1d4ed8",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

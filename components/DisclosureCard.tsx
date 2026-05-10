@@ -25,6 +25,18 @@ export type Disclosure = {
     change_pct?: number | null;
     curr_profit?: number | null;
     prev_profit?: number | null;
+    // 시가총액 대비 공시 금액
+    key_amount_billion?: number | null;
+    market_cap_comment?: string | null;
+    market_cap_ratio_pct?: number | null;
+    market_cap_risk?: string | null;
+    // 어닝쇼크 판정
+    shock_verdict?: string | null;
+    shock_verdict_en?: string | null;
+    shock_diff_pct?: number | null;
+    shock_comment?: string | null;
+    consensus_억?: number | null;
+    consensus_year?: string | null;
   };
   aiLoading?: boolean;
 };
@@ -41,24 +53,27 @@ function formatDate(d: string) {
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const color =
-    score >= 8 ? "bg-red-500" : score >= 5 ? "bg-yellow-500" : "bg-gray-600";
+function ImpactBadge({ score, sentiment }: { score: number; sentiment: string }) {
+  const label = sentiment === "positive" ? "긍정" : sentiment === "negative" ? "부정" : "중립";
+
+  // sentiment 기준 색상 (Tailwind 스캔 문제 회피용 inline style)
+  const bg =
+    sentiment === "positive"
+      ? score >= 8 ? "#059669" : score >= 5 ? "#047857" : "#064e3b"
+      : sentiment === "negative"
+      ? score >= 8 ? "#dc2626" : score >= 5 ? "#b91c1c" : "#7f1d1d"
+      : score >= 5 ? "#b45309" : "#4b5563";
+
   return (
-    <span className={`${color} text-white text-xs font-bold px-2 py-0.5 rounded`}>
-      {score}점
+    <span
+      style={{ backgroundColor: bg }}
+      className="text-white text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1"
+    >
+      {label}
+      <span className="opacity-60">·</span>
+      <span title="주가 영향도 (0~10)">영향도 {score}</span>
     </span>
   );
-}
-
-function SentimentBadge({ sentiment }: { sentiment: string }) {
-  const map: Record<string, { label: string; color: string }> = {
-    positive: { label: "긍정", color: "text-green-400" },
-    negative: { label: "부정", color: "text-red-400" },
-    neutral: { label: "중립", color: "text-gray-400" },
-  };
-  const s = map[sentiment] ?? map.neutral;
-  return <span className={`text-xs font-medium ${s.color}`}>{s.label}</span>;
 }
 
 export default function DisclosureCard({
@@ -114,10 +129,7 @@ return (
         </div>
         <div className="flex items-center gap-2">
           {item.ai && item.ai.score >= 0 && (
-            <>
-              <SentimentBadge sentiment={item.ai.sentiment} />
-              <ScoreBadge score={item.ai.score} />
-            </>
+            <ImpactBadge score={item.ai.score} sentiment={item.ai.sentiment} />
           )}
           {!item.ai && !item.aiLoading && onAnalyze && (
             <button
@@ -137,16 +149,9 @@ return (
 
       {item.ai && item.ai.score >= 0 && (
         <div className="bg-gray-800 rounded-lg p-3 mb-2 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-medium ${
-              item.ai.sentiment === "positive" ? "text-green-400" :
-              item.ai.sentiment === "negative" ? "text-red-400" : "text-gray-400"
-            }`}>
-              {item.ai.sentiment === "positive" ? "긍정" : item.ai.sentiment === "negative" ? "부정" : "중립"}
-            </span>
-            <span className="text-xs text-gray-600">·</span>
-            <span className="text-xs text-gray-400">{item.ai.reason}</span>
-          </div>
+          {item.ai.reason && (
+            <p className="text-xs text-gray-400 leading-relaxed">{item.ai.reason}</p>
+          )}
           {item.ai.summary && (
             <p className="text-xs text-gray-300 leading-relaxed">{item.ai.summary}</p>
           )}
