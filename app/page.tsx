@@ -13,6 +13,7 @@ import CalendarTab from "@/components/CalendarTab";
 import ThemeToggle from "@/components/ThemeToggle";
 import PortfolioTab from "@/components/PortfolioTab";
 import { SkeletonList } from "@/components/SkeletonCard";
+import { Toaster } from "@/components/Toaster";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -707,7 +708,17 @@ export default function Home() {
               {feedLoading && <span className="text-xs text-gray-500 animate-pulse ml-1">불러오는 중...</span>}
             </div>
 
-            {feedError && <p className="text-red-400 text-sm mb-4">{feedError}</p>}
+            {feedError && (
+              <div className="flex items-center justify-between bg-red-900/30 border border-red-800 rounded-xl px-4 py-3 mb-4">
+                <p className="text-red-400 text-sm">{feedError}</p>
+                <button
+                  onClick={() => fetchFeed(stockFilter === "small_cap", haltFilter !== "none" ? 14 : 3)}
+                  className="text-xs text-red-300 hover:text-white border border-red-700 hover:border-red-500 px-2 py-1 rounded-lg ml-3 shrink-0 transition-colors"
+                >
+                  재시도
+                </button>
+              </div>
+            )}
             {feedLoading && allItems.length === 0 && <SkeletonList />}
             {!feedLoading && sortedGroups.length === 0 && (
               <p className="text-gray-500 text-sm text-center py-12">공시가 없습니다.</p>
@@ -810,10 +821,21 @@ export default function Home() {
               {earningsLoading && <span className="text-xs text-gray-500 animate-pulse ml-1">불러오는 중...</span>}
             </div>
 
+            {earningsError && (
+              <div className="flex items-center justify-between bg-red-900/30 border border-red-800 rounded-xl px-4 py-3 mb-4">
+                <p className="text-red-400 text-sm">{earningsError}</p>
+                <button
+                  onClick={fetchEarnings}
+                  className="text-xs text-red-300 hover:text-white border border-red-700 hover:border-red-500 px-2 py-1 rounded-lg ml-3 shrink-0 transition-colors"
+                >
+                  재시도
+                </button>
+              </div>
+            )}
             <EarningsDashboard
               groups={pagedEarningsGroups}
               loading={earningsLoading}
-              error={earningsError}
+              error=""
               favorites={earningsFavorites}
               onToggleFavorite={toggleEarningsFavorite}
             />
@@ -985,6 +1007,7 @@ export default function Home() {
           </>
         )}
       </div>
+      <Toaster />
     </main>
   );
 }

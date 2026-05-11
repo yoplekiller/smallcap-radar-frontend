@@ -64,3 +64,9 @@ body {
 
 /* sticky 헤더 */
 [data-theme="light"] .sticky { background-color: #e8edf2 !important; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.2s ease-out; }

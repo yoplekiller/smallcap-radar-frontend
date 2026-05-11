@@ -7,14 +7,33 @@ import { type Disclosure } from "./DisclosureCard";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const LS_KEY = "smallcap_portfolio";
 
+export type Transaction = {
+  type: "buy" | "sell";
+  price: number;
+  quantity: number;
+  date: string;
+};
+
 export type PortfolioItem = {
   corp_code: string;
   corp_name: string;
   stock_code: string;
-  buy_price?: number;   // 매수가 (원)
-  quantity?: number;    // 수량 (주)
-  added_at: string;     // 등록일
+  buy_price?: number;      // 단순 매수가 (레거시)
+  quantity?: number;       // 단순 수량 (레거시)
+  added_at: string;
+  transactions?: Transaction[];
 };
+
+function calcPosition(txs: Transaction[]): { avgCost: number; netQty: number; totalBuyAmt: number } {
+  let buyAmt = 0, buyQty = 0, sellQty = 0;
+  for (const t of txs) {
+    if (t.type === "buy") { buyAmt += t.price * t.quantity; buyQty += t.quantity; }
+    else { sellQty += t.quantity; }
+  }
+  const netQty = Math.max(0, buyQty - sellQty);
+  const avgCost = buyQty > 0 ? buyAmt / buyQty : 0;
+  return { avgCost, netQty, totalBuyAmt: avgCost * netQty };
+}
 
 type PriceInfo = {
   price: number;
@@ -158,6 +177,64 @@ function EditForm({
   );
 }
 
+type TxFormState = { type: "buy" | "sell"; price: string; quantity: string };
+
+function TransactionForm({ onAdd, onClose }: { onAdd: (tx: Transaction) => void; onClose: () => void }) {
+  const [form, setForm] = useState<TxFormState>({ type: "buy", price: "", quantity: "" });
+  function submit() {
+    const p = Number(form.price), q = Number(form.quantity);
+    if (!p || !q) return;
+    onAdd({ type: form.type, price: p, quantity: q, date: new Date().toISOString().slice(0, 10) });
+    onClose();
+  }
+  return (
+    <div className="p-3 bg-gray-800 rounded-xl border border-gray-700 mb-2 space-y-2">
+      <div className="flex gap-2">
+        {(["buy", "sell"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setForm((f) => ({ ...f, type: t }))}
+            className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
+              form.type === t
+                ? t === "buy" ? "bg-blue-600 text-white" : "bg-red-600 text-white"
+                : "bg-gray-700 text-gray-400"
+            }`}
+          >
+            {t === "buy" ? "매수" : "매도"}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="text-[10px] text-gray-500 block mb-0.5">단가 (원)</label>
+          <input type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+            placeholder="12500"
+            className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div className="flex-1">
+          <label className="text-[10px] text-gray-500 block mb-0.5">수량 (주)</label>
+          <input type="number" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+            placeholder="100"
+            className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+      {form.price && form.quantity && (
+        <p className="text-[11px] text-gray-500">
+          {form.type === "buy" ? "매수" : "매도"}금액: {(Number(form.price) * Number(form.quantity)).toLocaleString()}원
+        </p>
+      )}
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-300 px-3 py-1">취소</button>
+        <button onClick={submit}
+          className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg disabled:opacity-50"
+          disabled={!form.price || !form.quantity}>
+          추가
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PortfolioCard({
   item,
   price,
@@ -165,6 +242,8 @@ function PortfolioCard({
   loading,
   onRemove,
   onEdit,
+  onAddTransaction,
+  onRemoveTransaction,
 }: {
   item: PortfolioItem;
   price?: PriceInfo;
@@ -172,8 +251,12 @@ function PortfolioCard({
   loading: boolean;
   onRemove: () => void;
   onEdit: (buy_price?: number, quantity?: number) => void;
+  onAddTransaction: (tx: Transaction) => void;
+  onRemoveTransaction: (idx: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [txOpen, setTxOpen] = useState(false);
+  const [showTxForm, setShowTxForm] = useState(false);
   const [open, setOpen] = useState(false);
   const [chartData, setChartData] = useState<HistoryPoint[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -188,16 +271,24 @@ function PortfolioCard({
       .finally(() => setChartLoading(false));
   }, [item.stock_code]);
 
-  const hasBuyInfo = item.buy_price != null && item.quantity != null;
+  // transactions 기반 포지션 계산 (없으면 레거시 buy_price/quantity 사용)
+  const txs = item.transactions ?? [];
+  const hasTxs = txs.length > 0;
+  const pos = hasTxs ? calcPosition(txs) : null;
+
+  const avgCost = pos ? pos.avgCost : item.buy_price;
+  const netQty = pos ? pos.netQty : item.quantity;
+  const hasBuyInfo = (avgCost != null && netQty != null && netQty > 0);
+
   const currentPrice = price?.price;
-  const returnRate = hasBuyInfo && currentPrice
-    ? ((currentPrice - item.buy_price!) / item.buy_price!) * 100
+  const returnRate = hasBuyInfo && currentPrice && avgCost
+    ? ((currentPrice - avgCost) / avgCost) * 100
     : null;
-  const profit = hasBuyInfo && currentPrice
-    ? (currentPrice - item.buy_price!) * item.quantity!
+  const profit = hasBuyInfo && currentPrice && avgCost && netQty
+    ? (currentPrice - avgCost) * netQty
     : null;
-  const currentValue = hasBuyInfo && currentPrice
-    ? currentPrice * item.quantity!
+  const currentValue = hasBuyInfo && currentPrice && netQty
+    ? currentPrice * netQty
     : null;
 
   const group: CompanyGroup = {
@@ -267,12 +358,12 @@ function PortfolioCard({
         {hasBuyInfo && (
           <div className="mt-2 grid grid-cols-3 gap-2 text-center bg-gray-800 rounded-lg p-2">
             <div>
-              <p className="text-[10px] text-gray-500">매수가</p>
-              <p className="text-xs text-gray-200 font-medium">{fmt(item.buy_price!)}원</p>
+              <p className="text-[10px] text-gray-500">평균단가</p>
+              <p className="text-xs text-gray-200 font-medium">{fmt(Math.round(avgCost!))}원</p>
             </div>
             <div>
-              <p className="text-[10px] text-gray-500">수량</p>
-              <p className="text-xs text-gray-200 font-medium">{fmt(item.quantity!)}주</p>
+              <p className="text-[10px] text-gray-500">보유수량</p>
+              <p className="text-xs text-gray-200 font-medium">{fmt(netQty!)}주</p>
             </div>
             <div>
               <p className="text-[10px] text-gray-500">평가금액</p>
@@ -283,12 +374,68 @@ function PortfolioCard({
           </div>
         )}
 
-        {!hasBuyInfo && !editing && (
+        {/* 거래 기록 */}
+        <div className="mt-2">
           <button
-            onClick={() => setEditing(true)}
+            onClick={() => setTxOpen((v) => !v)}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            <span>거래 기록 {txs.length}건</span>
+            <span>{txOpen ? "▲" : "▼"}</span>
+          </button>
+          {txOpen && (
+            <div className="mt-2 space-y-1">
+              {showTxForm && (
+                <TransactionForm
+                  onAdd={(tx) => { onAddTransaction(tx); setShowTxForm(false); }}
+                  onClose={() => setShowTxForm(false)}
+                />
+              )}
+              {!showTxForm && (
+                <button
+                  onClick={() => setShowTxForm(true)}
+                  className="w-full text-xs text-blue-400 hover:text-blue-300 border border-blue-900 hover:border-blue-700 py-1.5 rounded-lg transition-colors"
+                >
+                  + 거래 추가
+                </button>
+              )}
+              {txs.length > 0 && (
+                <div className="bg-gray-800 rounded-lg overflow-hidden">
+                  {[...txs].reverse().map((tx, ri) => {
+                    const idx = txs.length - 1 - ri;
+                    return (
+                      <div key={idx} className="flex items-center justify-between px-3 py-2 border-b border-gray-700 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            tx.type === "buy" ? "bg-blue-900 text-blue-300" : "bg-red-900 text-red-300"
+                          }`}>
+                            {tx.type === "buy" ? "매수" : "매도"}
+                          </span>
+                          <span className="text-xs text-gray-300">{fmt(tx.price)}원</span>
+                          <span className="text-xs text-gray-500">{fmt(tx.quantity)}주</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-600">{tx.date}</span>
+                          <button
+                            onClick={() => onRemoveTransaction(idx)}
+                            className="text-gray-600 hover:text-red-400 text-xs transition-colors"
+                          >✕</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {!hasBuyInfo && !editing && !txOpen && (
+          <button
+            onClick={() => { setTxOpen(true); setShowTxForm(true); }}
             className="mt-2 text-xs text-gray-600 hover:text-blue-400 transition-colors"
           >
-            + 매수가·수량 입력하면 수익률 계산됩니다
+            + 매수 거래 추가하면 수익률 계산됩니다
           </button>
         )}
       </div>
@@ -403,6 +550,31 @@ export default function PortfolioTab() {
     });
   }
 
+  function addTransaction(corp_code: string, tx: Transaction) {
+    setPortfolio((prev) => {
+      const next = prev.map((p) =>
+        p.corp_code === corp_code
+          ? { ...p, transactions: [...(p.transactions ?? []), tx] }
+          : p
+      );
+      savePortfolio(next);
+      return next;
+    });
+  }
+
+  function removeTransaction(corp_code: string, idx: number) {
+    setPortfolio((prev) => {
+      const next = prev.map((p) => {
+        if (p.corp_code !== corp_code) return p;
+        const txs = [...(p.transactions ?? [])];
+        txs.splice(idx, 1);
+        return { ...p, transactions: txs };
+      });
+      savePortfolio(next);
+      return next;
+    });
+  }
+
   const fetchDisclosures = useCallback(async (item: PortfolioItem) => {
     if (!item.corp_code) return;
     setLoadingCodes((prev) => new Set(prev).add(item.corp_code));
@@ -442,9 +614,14 @@ export default function PortfolioTab() {
     let totalBuy = 0, totalCurrent = 0, count = 0;
     for (const item of portfolio) {
       const p = prices[item.stock_code];
-      if (item.buy_price && item.quantity && p) {
-        totalBuy += item.buy_price * item.quantity;
-        totalCurrent += p.price * item.quantity;
+      const txs = item.transactions ?? [];
+      const hasTxs = txs.length > 0;
+      const pos = hasTxs ? calcPosition(txs) : null;
+      const avgCost = pos ? pos.avgCost : item.buy_price;
+      const netQty = pos ? pos.netQty : item.quantity;
+      if (avgCost && netQty && netQty > 0 && p) {
+        totalBuy += avgCost * netQty;
+        totalCurrent += p.price * netQty;
         count++;
       }
     }
@@ -587,6 +764,8 @@ export default function PortfolioTab() {
               loading={loadingCodes.has(item.corp_code)}
               onRemove={() => removeFromPortfolio(item.corp_code)}
               onEdit={(bp, qty) => editBuyInfo(item.corp_code, bp, qty)}
+              onAddTransaction={(tx) => addTransaction(item.corp_code, tx)}
+              onRemoveTransaction={(idx) => removeTransaction(item.corp_code, idx)}
             />
           ))}
         </div>
