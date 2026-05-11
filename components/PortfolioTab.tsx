@@ -279,22 +279,16 @@ export default function PortfolioTab() {
     if (!q.trim()) { setSearchResults([]); return; }
     setSearchLoading(true);
     try {
-      const res = await fetch(`${API_URL}/disclosures/search?q=${encodeURIComponent(q.trim())}&days=7`);
+      const res = await fetch(`${API_URL}/disclosures/companies/search?q=${encodeURIComponent(q.trim())}`);
       const data = await res.json();
-      const seen = new Set<string>();
-      const items: PortfolioItem[] = [];
-      for (const d of (data.data ?? []) as Disclosure[]) {
-        const key = d.corp_code ?? d.corp_name;
-        if (!seen.has(key)) {
-          seen.add(key);
-          items.push({
-            corp_code: d.corp_code ?? "",
-            corp_name: d.corp_name,
-            stock_code: d.stock_code ?? "",
-            added_at: new Date().toISOString(),
-          });
-        }
-      }
+      const items: PortfolioItem[] = (data.data ?? []).map(
+        (c: { corp_code: string; corp_name: string; stock_code: string }) => ({
+          corp_code: c.corp_code,
+          corp_name: c.corp_name,
+          stock_code: c.stock_code ?? "",
+          added_at: new Date().toISOString(),
+        })
+      );
       setSearchResults(items);
     } catch {
       setSearchResults([]);

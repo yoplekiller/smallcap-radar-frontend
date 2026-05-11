@@ -19,6 +19,7 @@ type StockFilter = "all" | "small_cap" | "penny";
 type HaltFilter = "none" | "halt_scheduled" | "halted";
 type DiscType = "all" | "cb" | "rights" | "treasury" | "major" | "governance";
 type Mode = "feed" | "earnings" | "alerts" | "favorites" | "calendar" | "search" | "portfolio";
+type FavEntry = { corp_code: string; corp_name: string; stock_code: string };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "latest", label: "최신순" },
@@ -98,26 +99,41 @@ export default function Home() {
   const [searchError, setSearchError] = useState("");
 
   // 공시 즐겨찾기 (localStorage 동기화)
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [favorites, setFavorites] = useState<Map<string, FavEntry>>(new Map());
   useEffect(() => {
     try {
       const stored = localStorage.getItem("smallcap_favorites");
-      if (stored) setFavorites(new Set(JSON.parse(stored)));
+      if (stored) {
+        const parsed = JSON.parse(stored) as unknown[];
+        const map = new Map<string, FavEntry>();
+        for (const item of parsed) {
+          if (typeof item === "string") {
+            map.set(item, { corp_code: item, corp_name: "", stock_code: "" });
+          } else if (item && typeof item === "object" && "corp_code" in item) {
+            const e = item as FavEntry;
+            map.set(e.corp_code, e);
+          }
+        }
+        setFavorites(map);
+      }
     } catch {}
   }, []);
 
-  function toggleFavorite(corpCode: string) {
+  function toggleFavorite(corpCode: string, corpName = "", stockCode = "") {
     if (!corpCode) return;
     setFavorites((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(corpCode)) next.delete(corpCode);
-      else next.add(corpCode);
+      else next.set(corpCode, { corp_code: corpCode, corp_name: corpName, stock_code: stockCode });
       try {
-        localStorage.setItem("smallcap_favorites", JSON.stringify([...next]));
+        localStorage.setItem("smallcap_favorites", JSON.stringify([...next.values()]));
       } catch {}
       return next;
     });
   }
+
+  const [favDisclosures, setFavDisclosures] = useState<Record<string, Disclosure[]>>({});
+  const [favLoading, setFavLoading] = useState(false);
 
   // 실적 즐겨찾기 (별도 localStorage 키)
   const [earningsFavorites, setEarningsFavorites] = useState<Set<string>>(new Set());
@@ -218,15 +234,50 @@ export default function Home() {
   const feedSentinelRef = useInfiniteScroll(setPage, hasMore);
   const earningsSentinelRef = useInfiniteScroll(setEarningsPage, hasMoreEarnings);
 
-  // 공시 즐겨찾기 그룹
-  const favoriteGroups = useMemo(() => {
+  // 공시 즐겨찾기 그룹 — favDisclosures 우선, 없으면 피드 fallback
+  const favoriteGroups = useMemo((): CompanyGroup[] => {
+    if (Object.keys(favDisclosures).length > 0) {
+      return [...favorites.values()].map((entry) => {
+        const discs = favDisclosures[entry.corp_code] ?? [];
+        return {
+          corp_code: entry.corp_code,
+          corp_name: entry.corp_name || discs[0]?.corp_name || entry.corp_code,
+          stock_code: entry.stock_code || discs[0]?.stock_code || "",
+          disclosures: discs,
+          price: discs[0]?.price,
+          change_rate: discs[0]?.change_rate,
+          change_amount: discs[0]?.change_amount,
+        };
+      });
+    }
     return attachPrices(groupByCompany(allItems)).filter((g) => favorites.has(g.corp_code));
-  }, [allItems, favorites]);
+  }, [favDisclosures, allItems, favorites]);
 
   // 실적 즐겨찾기 그룹
   const earningsFavoriteGroups = useMemo(() => {
     return attachPrices(groupByCompany(earningsItems)).filter((g) => earningsFavorites.has(g.corp_code));
   }, [earningsItems, earningsFavorites]);
+
+  const fetchFavoritesData = useCallback(async (entries: FavEntry[]) => {
+    if (!entries.length) return;
+    setFavLoading(true);
+    try {
+      const results = await Promise.allSettled(
+        entries.map(async (e) => {
+          const res = await fetch(`${API_URL}/disclosures/company/${e.corp_code}/history?days=30`);
+          const data = await res.json();
+          return { code: e.corp_code, disclosures: (data.data ?? []) as Disclosure[] };
+        })
+      );
+      const map: Record<string, Disclosure[]> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") map[r.value.code] = r.value.disclosures;
+      }
+      setFavDisclosures(map);
+    } catch {} finally {
+      setFavLoading(false);
+    }
+  }, []);
 
   const fetchPrices = useCallback(async (disclosures: Disclosure[]) => {
     const tickers = [...new Set(disclosures.map((d) => d.stock_code).filter(Boolean))];
@@ -295,6 +346,12 @@ export default function Home() {
     fetchFeed(false);
   }, [fetchFeed]);
 
+  useEffect(() => {
+    if (!allItems.length) return;
+    const id = setInterval(() => fetchPrices(allItems), 60_000);
+    return () => clearInterval(id);
+  }, [allItems, fetchPrices]);
+
   function handleTabChange(newMode: Mode) {
     if (newMode === mode) return;
     setMode(newMode);
@@ -302,7 +359,8 @@ export default function Home() {
       fetchEarnings();
     }
     if (newMode === "favorites") {
-      if (allItems.length === 0 && !feedLoading) fetchFeed(false, 7);
+      const favEntries = [...favorites.values()].filter((e) => e.corp_code);
+      if (favEntries.length) fetchFavoritesData(favEntries);
       if (earningsItems.length === 0 && !earningsLoading && earningsFavorites.size > 0) {
         fetchEarnings();
       }
@@ -413,12 +471,12 @@ export default function Home() {
           </form>
           {/* 탭 바 */}
           {mode !== "search" && (
-            <div className="flex mt-3 -mb-3">
+            <div className="flex mt-3 -mb-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {TAB_ITEMS.map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => handleTabChange(key)}
-                  className={`px-4 py-1.5 text-sm font-medium transition-colors border-b-2 ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium transition-colors border-b-2 ${
                     mode === key
                       ? key === "alerts"
                         ? "text-red-400 border-red-400"
@@ -567,7 +625,7 @@ export default function Home() {
                   key={g.corp_code || g.corp_name}
                   group={g}
                   isFavorite={favorites.has(g.corp_code)}
-                  onToggleFavorite={() => toggleFavorite(g.corp_code)}
+                  onToggleFavorite={() => toggleFavorite(g.corp_code, g.corp_name, g.stock_code)}
                 />
               ))}
             </div>
@@ -727,10 +785,10 @@ export default function Home() {
                   </div>
                 ) : (
                   <>
-                    {feedLoading && (
-                      <p className="text-xs text-gray-500 animate-pulse text-center mb-4">피드 로드 중...</p>
+                    {favLoading && (
+                      <p className="text-xs text-gray-500 animate-pulse text-center mb-4">불러오는 중...</p>
                     )}
-                    {!feedLoading && favoriteGroups.length === 0 && (
+                    {!favLoading && favoriteGroups.length === 0 && (
                       <p className="text-gray-500 text-sm text-center py-12">
                         즐겨찾기 기업의 최근 공시가 없습니다.
                       </p>
@@ -741,7 +799,7 @@ export default function Home() {
                           key={g.corp_code || g.corp_name}
                           group={g}
                           isFavorite={true}
-                          onToggleFavorite={() => toggleFavorite(g.corp_code)}
+                          onToggleFavorite={() => toggleFavorite(g.corp_code, g.corp_name, g.stock_code)}
                         />
                       ))}
                     </div>
@@ -819,7 +877,7 @@ export default function Home() {
                   key={g.corp_code || g.corp_name}
                   group={g}
                   isFavorite={favorites.has(g.corp_code)}
-                  onToggleFavorite={() => toggleFavorite(g.corp_code)}
+                  onToggleFavorite={() => toggleFavorite(g.corp_code, g.corp_name, g.stock_code)}
                 />
               ))}
             </div>
