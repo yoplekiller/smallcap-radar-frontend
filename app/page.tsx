@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { type Disclosure } from "@/components/DisclosureCard";
 import CompanyCard, { type CompanyGroup } from "@/components/CompanyCard";
 import EarningsDashboard from "@/components/EarningsDashboard";
@@ -15,7 +16,7 @@ import PortfolioTab from "@/components/PortfolioTab";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type SortKey = "latest" | "change_up" | "change_down" | "price_desc";
-type StockFilter = "all" | "small_cap" | "penny";
+type StockFilter = "all" | "small_cap" | "penny" | "etf";
 type HaltFilter = "none" | "halt_scheduled" | "halted";
 type DiscType = "all" | "cb" | "rights" | "treasury" | "major" | "governance";
 type Mode = "feed" | "earnings" | "alerts" | "favorites" | "calendar" | "search" | "portfolio";
@@ -32,7 +33,10 @@ const FILTER_OPTIONS: { key: StockFilter; label: string; desc: string }[] = [
   { key: "all", label: "전체", desc: "" },
   { key: "small_cap", label: "소형주", desc: "시총 3,000억 이하" },
   { key: "penny", label: "동전주", desc: "1,000원 이하" },
+  { key: "etf", label: "ETF", desc: "상장지수펀드" },
 ];
+
+const ETF_KEYWORDS = ["ETF", "KODEX", "TIGER", "KINDEX", "HANARO", "ACE", "SOL", "TIMEFOLIO", "FOCUS", "ARIRANG", "상장지수"];
 
 const HALT_FILTER_OPTIONS: { key: HaltFilter; label: string }[] = [
   { key: "none", label: "전체" },
@@ -177,6 +181,11 @@ export default function Home() {
     let groups = attachPrices(groupByCompany(items));
     if (stockFilter === "penny") {
       groups = groups.filter((g) => g.price != null && g.price < 1000);
+    }
+    if (stockFilter === "etf") {
+      groups = groups.filter((g) =>
+        ETF_KEYWORDS.some((kw) => g.corp_name.toUpperCase().includes(kw))
+      );
     }
     if (haltFilter === "halt_scheduled") {
       groups = groups.filter((g) =>
@@ -374,6 +383,8 @@ export default function Home() {
     setPage(1);
     if (f === "small_cap" || prev === "small_cap") {
       fetchFeed(f === "small_cap", haltFilter !== "none" ? 14 : 3);
+    } else if (f === "etf" && allItems.length === 0) {
+      fetchFeed(false, 7);
     }
   }
 
@@ -400,6 +411,20 @@ export default function Home() {
     setDiscTypeOpen(false);
     setPage(1);
   }
+
+  const handlePullRefresh = useCallback(async () => {
+    if (mode === "feed") {
+      await fetchFeed(stockFilter === "small_cap", haltFilter !== "none" ? 14 : 3);
+    } else if (mode === "earnings") {
+      await fetchEarnings();
+    } else if (mode === "favorites") {
+      const favEntries = [...favorites.values()].filter((e) => e.corp_code);
+      if (favEntries.length) await fetchFavoritesData(favEntries);
+    }
+  }, [mode, stockFilter, haltFilter, fetchFeed, fetchEarnings, favorites, fetchFavoritesData]);
+
+  const { pullY, refreshing: pullRefreshing, onTouchStart, onTouchMove, onTouchEnd } =
+    usePullToRefresh(handlePullRefresh);
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -433,7 +458,22 @@ export default function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main
+      className="min-h-screen bg-gray-950 text-white"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* 당겨서 새로고침 인디케이터 */}
+      {(pullY > 0 || pullRefreshing) && (
+        <div
+          className="flex items-center justify-center overflow-hidden transition-all duration-150 bg-gray-950"
+          style={{ height: pullRefreshing ? 44 : pullY }}
+        >
+          <div className={`w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full ${pullRefreshing ? "animate-spin" : ""}`}
+               style={{ transform: pullRefreshing ? undefined : `rotate(${(pullY / 70) * 270}deg)` }} />
+        </div>
+      )}
       <header className="border-b border-gray-800 px-4 py-3 sticky top-0 bg-gray-950 z-10">
         <div className="max-w-2xl mx-auto">
           {mode === "search" ? (
