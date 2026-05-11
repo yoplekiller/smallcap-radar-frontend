@@ -42,6 +42,8 @@ export default function CompanyCard({
 }) {
   const [open, setOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [viewerRcept, setViewerRcept] = useState<string | null>(null);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>("disclosures");
   const [news, setNews] = useState<NewsItem[] | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -100,6 +102,40 @@ export default function CompanyCard({
     <>
     {detailOpen && (
       <CompanyDetailModal group={group} onClose={() => setDetailOpen(false)} />
+    )}
+
+    {/* 공시 원문 인앱 뷰어 */}
+    {viewerRcept && (
+      <div className="fixed inset-0 z-50 flex flex-col bg-black">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0">
+          <button
+            onClick={() => { setViewerRcept(null); setIframeLoaded(false); }}
+            className="text-gray-400 hover:text-white text-sm flex items-center gap-1"
+          >
+            ← 닫기
+          </button>
+          <span className="text-xs text-gray-500">공시 원문</span>
+          <a
+            href={`https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${viewerRcept}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            브라우저로 ↗
+          </a>
+        </div>
+        {!iframeLoaded && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        <iframe
+          src={`https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${viewerRcept}`}
+          className={`flex-1 w-full border-0 ${iframeLoaded ? "block" : "hidden"}`}
+          onLoad={() => setIframeLoaded(true)}
+          title="공시 원문"
+        />
+      </div>
     )}
     <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
       {/* 회사 헤더 */}
@@ -203,6 +239,12 @@ export default function CompanyCard({
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => { setViewerRcept(item.rcept_no); setIframeLoaded(false); }}
+                          className="text-[10px] text-gray-600 hover:text-blue-400 border border-gray-800 hover:border-blue-800 px-1.5 py-0.5 rounded transition-colors"
+                        >
+                          원문
+                        </button>
                         {ai && ai.weather && (
                           <span className="text-base leading-none">
                             {ai.weather === "sunny" ? "☀️" : ai.weather === "cloudy" ? "☁️" : "🌤️"}

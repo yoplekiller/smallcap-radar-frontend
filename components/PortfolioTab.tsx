@@ -36,6 +36,47 @@ function savePortfolio(items: PortfolioItem[]) {
 
 function fmt(n: number) { return n.toLocaleString("ko-KR"); }
 
+type HistoryPoint = { date: string; close: number };
+
+function MiniChart({ data, buyPrice }: { data: HistoryPoint[]; buyPrice?: number }) {
+  if (data.length < 2) return null;
+  const closes = data.map((d) => d.close);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+  const W = 260;
+  const H = 52;
+  const pts = closes.map((c, i) => [
+    (i / (closes.length - 1)) * W,
+    H - ((c - min) / range) * (H - 4) - 2,
+  ]);
+  const pathD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const isUp = closes[closes.length - 1] >= closes[0];
+  const lineColor = isUp ? "#10b981" : "#ef4444";
+  const buyY = buyPrice != null
+    ? H - ((Math.max(min, Math.min(max, buyPrice)) - min) / range) * (H - 4) - 2
+    : null;
+
+  return (
+    <div className="mt-2">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 52 }}>
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth="1.5" strokeLinejoin="round" />
+        {buyY != null && (
+          <line x1={0} y1={buyY} x2={W} y2={buyY}
+            stroke="#6b7280" strokeWidth="1" strokeDasharray="4,3" />
+        )}
+        {/* 마지막 점 강조 */}
+        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.5" fill={lineColor} />
+      </svg>
+      <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
+        <span>{data[0]?.date?.slice(4, 6)}/{data[0]?.date?.slice(6, 8)}</span>
+        {buyY != null && <span className="text-gray-600">-- 매수가</span>}
+        <span>{data[data.length - 1]?.date?.slice(4, 6)}/{data[data.length - 1]?.date?.slice(6, 8)}</span>
+      </div>
+    </div>
+  );
+}
+
 function ReturnBadge({ rate, profit }: { rate: number; profit: number }) {
   const isPos = profit >= 0;
   const bg = isPos ? "#059669" : "#dc2626";
@@ -134,6 +175,18 @@ function PortfolioCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
+  const [chartData, setChartData] = useState<HistoryPoint[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+
+  useEffect(() => {
+    if (!item.stock_code) return;
+    setChartLoading(true);
+    fetch(`${API_URL}/disclosures/price-history/${item.stock_code}?count=30`)
+      .then((r) => r.json())
+      .then((d) => setChartData(d.data ?? []))
+      .catch(() => {})
+      .finally(() => setChartLoading(false));
+  }, [item.stock_code]);
 
   const hasBuyInfo = item.buy_price != null && item.quantity != null;
   const currentPrice = price?.price;
@@ -200,6 +253,14 @@ function PortfolioCard({
           <div className="mt-2">
             <ReturnBadge rate={returnRate} profit={profit} />
           </div>
+        )}
+
+        {/* 30일 차트 */}
+        {chartLoading && (
+          <div className="mt-2 h-12 bg-gray-800 rounded animate-pulse" />
+        )}
+        {!chartLoading && chartData.length >= 2 && (
+          <MiniChart data={chartData} buyPrice={item.buy_price} />
         )}
 
         {/* 매수 정보 */}

@@ -12,6 +12,7 @@ import PushToggle from "@/components/PushToggle";
 import CalendarTab from "@/components/CalendarTab";
 import ThemeToggle from "@/components/ThemeToggle";
 import PortfolioTab from "@/components/PortfolioTab";
+import { SkeletonList } from "@/components/SkeletonCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -101,6 +102,14 @@ export default function Home() {
   const [searchGroups, setSearchGroups] = useState<CompanyGroup[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("smallcap_recent_searches");
+      if (s) setRecentSearches(JSON.parse(s));
+    } catch {}
+  }, []);
 
   // 공시 즐겨찾기 (localStorage 동기화)
   const [favorites, setFavorites] = useState<Map<string, FavEntry>>(new Map());
@@ -426,14 +435,30 @@ export default function Home() {
   const { pullY, refreshing: pullRefreshing, onTouchStart, onTouchMove, onTouchEnd } =
     usePullToRefresh(handlePullRefresh);
 
-  async function handleSearch(e?: React.FormEvent) {
+  function saveRecentSearch(q: string) {
+    const next = [q, ...recentSearches.filter((s) => s !== q)].slice(0, 8);
+    setRecentSearches(next);
+    try { localStorage.setItem("smallcap_recent_searches", JSON.stringify(next)); } catch {}
+  }
+
+  function removeRecentSearch(q: string) {
+    const next = recentSearches.filter((s) => s !== q);
+    setRecentSearches(next);
+    try { localStorage.setItem("smallcap_recent_searches", JSON.stringify(next)); } catch {}
+  }
+
+  async function handleSearch(e?: React.FormEvent, overrideQ?: string) {
     e?.preventDefault();
-    if (!query.trim()) return;
+    const q = (overrideQ ?? query).trim();
+    if (!q) return;
+    if (overrideQ) setQuery(overrideQ);
     setMode("search");
+    setSearchFocused(false);
     setSearchLoading(true);
     setSearchError("");
+    saveRecentSearch(q);
     try {
-      const params = new URLSearchParams({ q: query.trim(), days: String(searchDays) });
+      const params = new URLSearchParams({ q, days: String(searchDays) });
       const res = await fetch(`${API_URL}/disclosures/search?${params}`);
       const data = await res.json();
       setSearchGroups(groupByCompany(data.data ?? []));
@@ -493,14 +518,42 @@ export default function Home() {
               </div>
             </div>
           )}
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="회사명 검색 (예: 카카오, 삼성)"
-              className="flex-1 bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none focus:border-blue-500"
-            />
+          <form onSubmit={handleSearch} className="flex gap-2 relative">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                placeholder="회사명 검색 (예: 카카오, 삼성)"
+                className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+              {searchFocused && !query.trim() && recentSearches.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-xl overflow-hidden z-30 shadow-xl">
+                  <p className="px-3 py-1.5 text-[10px] text-gray-600 border-b border-gray-800">최근 검색어</p>
+                  {recentSearches.map((s) => (
+                    <div key={s} className="flex items-center px-3 py-2 hover:bg-gray-800">
+                      <button
+                        type="button"
+                        onClick={() => handleSearch(undefined, s)}
+                        className="flex-1 text-left text-sm text-gray-300 flex items-center gap-2"
+                      >
+                        <span className="text-gray-600 text-xs">🕐</span>
+                        {s}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeRecentSearch(s)}
+                        className="text-gray-700 hover:text-gray-400 text-xs pl-2"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="submit"
               disabled={!query.trim() || searchLoading}
@@ -655,6 +708,7 @@ export default function Home() {
             </div>
 
             {feedError && <p className="text-red-400 text-sm mb-4">{feedError}</p>}
+            {feedLoading && allItems.length === 0 && <SkeletonList />}
             {!feedLoading && sortedGroups.length === 0 && (
               <p className="text-gray-500 text-sm text-center py-12">공시가 없습니다.</p>
             )}
