@@ -565,12 +565,15 @@ export default function Home() {
           </form>
           {/* 탭 바 */}
           {mode !== "search" && (
-            <div className="flex mt-3 -mb-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div
+              className="flex mt-2 overflow-x-auto"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+            >
               {TAB_ITEMS.map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => handleTabChange(key)}
-                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium transition-colors border-b-2 ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
                     mode === key
                       ? key === "alerts"
                         ? "text-red-400 border-red-400"
