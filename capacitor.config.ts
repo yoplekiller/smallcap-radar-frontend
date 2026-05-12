@@ -6,8 +6,6 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     androidScheme: 'https',
-    url: 'https://smallcap-radar-frontend.vercel.app',
-    cleartext: false,
   },
 };
 
