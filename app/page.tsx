@@ -14,6 +14,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import PortfolioTab from "@/components/PortfolioTab";
 import { SkeletonList } from "@/components/SkeletonCard";
 import { Toaster } from "@/components/Toaster";
+import SplashScreen from "@/components/SplashScreen";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -484,6 +485,8 @@ export default function Home() {
   ];
 
   return (
+    <>
+    <SplashScreen />
     <main
       className="min-h-screen bg-gray-950 text-white"
       onTouchStart={onTouchStart}
@@ -1022,5 +1025,6 @@ export default function Home() {
       </div>
       <Toaster />
     </main>
+    </>
   );
 }
