@@ -141,36 +141,42 @@ export default function CompanyCard({
       {/* 회사 헤더 */}
       <div
         onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800 transition-colors cursor-pointer"
+        className="w-full flex items-start justify-between px-4 py-3 hover:bg-gray-800 transition-colors cursor-pointer"
       >
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-bold text-white">{group.corp_name}</span>
-          {group.stock_code && (
-            <span className="text-xs text-gray-500">{group.stock_code}</span>
-          )}
-          {group.price != null && (
-            <span className="text-xs">
-              <span className="text-white font-medium">{group.price.toLocaleString()}원</span>
-              {group.change_rate != null && (
-                <span
-                  className={`ml-1 font-medium ${
-                    Math.abs(group.change_rate).toFixed(2) === "0.00"
-                      ? "text-gray-500"
-                      : group.change_rate > 0
-                      ? "text-red-400"
-                      : "text-blue-400"
-                  }`}
-                >
-                  {Math.abs(group.change_rate).toFixed(2) !== "0.00" &&
-                    (group.change_rate > 0 ? "▲" : "▼")}
-                  {Math.abs(group.change_rate).toFixed(2)}%
-                </span>
-              )}
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
+          {/* 1행: 회사명 + 종목코드 */}
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-white truncate">{group.corp_name}</span>
+            {group.stock_code && (
+              <span className="text-xs text-gray-500 shrink-0">{group.stock_code}</span>
+            )}
+          </div>
+          {/* 2행: 가격 / 퍼센트 / 공시 건수 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {group.price != null && (
+              <span className="text-xs text-white font-medium">
+                {group.price.toLocaleString()}원
+              </span>
+            )}
+            {group.change_rate != null && (
+              <span
+                className={`text-xs font-medium ${
+                  Math.abs(group.change_rate).toFixed(2) === "0.00"
+                    ? "text-gray-500"
+                    : group.change_rate > 0
+                    ? "text-red-400"
+                    : "text-blue-400"
+                }`}
+              >
+                {Math.abs(group.change_rate).toFixed(2) !== "0.00" &&
+                  (group.change_rate > 0 ? "▲" : "▼")}
+                {Math.abs(group.change_rate).toFixed(2)}%
+              </span>
+            )}
+            <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">
+              공시 {group.disclosures.length}건
             </span>
-          )}
-          <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">
-            공시 {group.disclosures.length}건
-          </span>
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {onToggleFavorite && (
