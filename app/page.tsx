@@ -565,25 +565,28 @@ export default function Home() {
           </form>
           {/* 탭 바 */}
           {mode !== "search" && (
-            <div
-              className="flex mt-2 overflow-x-auto"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
-            >
-              {TAB_ITEMS.map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => handleTabChange(key)}
-                  className={`shrink-0 whitespace-nowrap px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
-                    mode === key
-                      ? key === "alerts"
-                        ? "text-red-400 border-red-400"
-                        : "text-blue-400 border-blue-400"
-                      : "text-gray-500 border-transparent hover:text-gray-300"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="relative mt-2">
+              <div
+                className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+              >
+                {TAB_ITEMS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => handleTabChange(key)}
+                    className={`shrink-0 whitespace-nowrap px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
+                      mode === key
+                        ? key === "alerts"
+                          ? "text-red-400 border-red-400"
+                          : "text-blue-400 border-blue-400"
+                        : "text-gray-500 border-transparent hover:text-gray-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-gray-950 to-transparent" />
             </div>
           )}
         </div>
