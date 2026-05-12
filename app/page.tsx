@@ -567,14 +567,21 @@ export default function Home() {
           {mode !== "search" && (
             <div className="relative mt-2">
               <div
-                className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden"
-                style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+                style={{
+                  display: "flex",
+                  flexWrap: "nowrap",
+                  overflowX: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                } as React.CSSProperties}
               >
                 {TAB_ITEMS.map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => handleTabChange(key)}
-                    className={`shrink-0 whitespace-nowrap px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                    className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
                       mode === key
                         ? key === "alerts"
                           ? "text-red-400 border-red-400"
