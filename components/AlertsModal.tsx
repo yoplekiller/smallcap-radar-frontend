@@ -46,15 +46,16 @@ export default function AlertsModal() {
 
   return (
     <>
-      {/* 벨 버튼 */}
+      {/* 세력포착 텍스트 버튼 */}
       <button
         onClick={openModal}
-        className="relative p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-        title="세력 포착 알림"
+        className="relative flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
+        title="세력 포착 알림 이력"
       >
-        <span className="text-lg">🔔</span>
+        <span>⚡</span>
+        <span>세력포착</span>
         {count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+          <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
             {count > 99 ? "99+" : count}
           </span>
         )}
