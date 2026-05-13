@@ -239,15 +239,16 @@ export default function AlertFeed() {
 
   return (
     <div className="relative" ref={panelRef}>
-      {/* 벨 버튼 */}
+      {/* 알림 텍스트 버튼 */}
       <button
         onClick={handleOpen}
-        className="relative p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+        className="relative flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
         aria-label="알림"
       >
-        <span className="text-lg leading-none">🔔</span>
+        <span>🔔</span>
+        <span>알림</span>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1">
+          <span className="min-w-[16px] h-4 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}

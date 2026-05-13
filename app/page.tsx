@@ -479,7 +479,7 @@ export default function Home() {
   const TAB_ITEMS: { key: Mode; label: string }[] = [
     { key: "feed", label: "공시" },
     { key: "earnings", label: "영업실적" },
-    { key: "market", label: "시장" },
+    { key: "market", label: "시장정보" },
     { key: "portfolio", label: "포트폴리오" },
     { key: "favorites", label: totalFavCount > 0 ? `즐겨찾기 (${totalFavCount})` : "즐겨찾기" },
     { key: "calendar", label: "캘린더" },
