@@ -7,7 +7,8 @@ import { type Disclosure } from "@/components/DisclosureCard";
 import CompanyCard, { type CompanyGroup } from "@/components/CompanyCard";
 import EarningsDashboard from "@/components/EarningsDashboard";
 import AlertFeed from "@/components/AlertFeed";
-import AlertsTab from "@/components/AlertsTab";
+import AlertsModal from "@/components/AlertsModal";
+import MarketTab from "@/components/MarketTab";
 import PushToggle from "@/components/PushToggle";
 import CalendarTab from "@/components/CalendarTab";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -22,7 +23,7 @@ type SortKey = "latest" | "change_up" | "change_down" | "price_desc";
 type StockFilter = "all" | "small_cap" | "penny" | "etf";
 type HaltFilter = "none" | "halt_scheduled" | "halted";
 type DiscType = "all" | "cb" | "rights" | "treasury" | "major" | "governance";
-type Mode = "feed" | "earnings" | "alerts" | "favorites" | "calendar" | "search" | "portfolio";
+type Mode = "feed" | "earnings" | "market" | "favorites" | "calendar" | "search" | "portfolio";
 type FavEntry = { corp_code: string; corp_name: string; stock_code: string };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -478,7 +479,7 @@ export default function Home() {
   const TAB_ITEMS: { key: Mode; label: string }[] = [
     { key: "feed", label: "공시" },
     { key: "earnings", label: "영업실적" },
-    { key: "alerts", label: "세력 포착" },
+    { key: "market", label: "시장" },
     { key: "portfolio", label: "포트폴리오" },
     { key: "favorites", label: totalFavCount > 0 ? `즐겨찾기 (${totalFavCount})` : "즐겨찾기" },
     { key: "calendar", label: "캘린더" },
@@ -519,6 +520,7 @@ export default function Home() {
                 <ThemeToggle />
                 <PushToggle />
                 <AlertFeed />
+                <AlertsModal />
               </div>
             </div>
           )}
@@ -586,9 +588,7 @@ export default function Home() {
                     style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                     className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
                       mode === key
-                        ? key === "alerts"
-                          ? "text-red-400 border-red-400"
-                          : "text-blue-400 border-blue-400"
+                        ? "text-blue-400 border-blue-400"
                         : "text-gray-500 border-transparent hover:text-gray-300"
                     }`}
                   >
@@ -868,8 +868,8 @@ export default function Home() {
           </>
         )}
 
-        {/* ── 세력 포착 탭 ── */}
-        {mode === "alerts" && <AlertsTab />}
+        {/* ── 시장 탭 ── */}
+        {mode === "market" && <MarketTab />}
 
         {/* ── 포트폴리오 탭 ── */}
         {mode === "portfolio" && <PortfolioTab />}
