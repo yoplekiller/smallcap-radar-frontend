@@ -13,6 +13,7 @@ type Overview = {
   vix: IndexItem;
   forex: IndexItem[];
   commodities: IndexItem[];
+  futures: IndexItem[];
   market_breadth: MarketBreadth;
   top_volume: VolumeItem[];
 };
@@ -101,7 +102,7 @@ export default function MarketTab() {
 
   if (!data) return null;
 
-  const { indices, vix, forex, commodities, market_breadth, top_volume } = data;
+  const { indices, vix, forex, commodities, futures, market_breadth, top_volume } = data;
 
   return (
     <div className="space-y-5 pb-6">
@@ -117,6 +118,15 @@ export default function MarketTab() {
           {indices.map((idx) => <IndexCard key={idx.name} item={idx} />)}
         </div>
       </Section>
+
+      {/* 미국 선물 */}
+      {futures?.length > 0 && (
+        <Section title="🌙 미국 선물">
+          <div className="grid grid-cols-2 gap-2">
+            {futures.map((f) => <IndexCard key={f.name} item={f} />)}
+          </div>
+        </Section>
+      )}
 
       {/* VIX */}
       <Section title="😨 공포지수 (VIX)">
