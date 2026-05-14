@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">소형주 공시 레이더</string>
-    <string name="title_activity_main">소형주 공시 레이더</string>
+    <string name="app_name">공시레이더</string>
+    <string name="title_activity_main">공시레이더</string>
     <string name="package_name">com.smallcap.radar</string>
     <string name="custom_url_scheme">com.smallcap.radar</string>
 </resources>

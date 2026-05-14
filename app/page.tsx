@@ -7,7 +7,6 @@ import { type Disclosure } from "@/components/DisclosureCard";
 import CompanyCard, { type CompanyGroup } from "@/components/CompanyCard";
 import EarningsDashboard from "@/components/EarningsDashboard";
 import AlertFeed from "@/components/AlertFeed";
-import AlertsModal from "@/components/AlertsModal";
 import MarketTab from "@/components/MarketTab";
 import PushToggle from "@/components/PushToggle";
 import CalendarTab from "@/components/CalendarTab";
@@ -520,7 +519,6 @@ export default function Home() {
                 <ThemeToggle />
                 <PushToggle />
                 <AlertFeed />
-                <AlertsModal />
               </div>
             </div>
           )}

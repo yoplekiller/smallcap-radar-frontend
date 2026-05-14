@@ -337,7 +337,10 @@ function PortfolioCard({
         )}
 
         {/* 현재가 */}
-        {price && <PriceRow price={price} />}
+        {price
+          ? <PriceRow price={price} />
+          : <p className="text-xs text-gray-600 mt-1">가격 조회 불가 (장 마감 또는 거래정지)</p>
+        }
 
         {/* 수익률 */}
         {returnRate !== null && profit !== null && (

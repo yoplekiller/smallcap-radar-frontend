@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "소형주 공시 레이더",
-  description: "소형주 공시 실시간 알림 — 세력 포착, 영업실적, AI 분석",
+  title: "공시레이더",
+  description: "소형주 공시 실시간 알림 — 영업실적, AI 분석",
   manifest: "/manifest.json",
   icons: {
     icon: [
